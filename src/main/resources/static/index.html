@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enterprise Knowledge Assistant | Groq-Powered Hybrid RAG</title>
+  <meta name="description" content="Production Enterprise RAG with Hybrid Search (pgvector + PostgreSQL Full-Text Search) and Ultra-Fast Groq LLM Inference">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Marked for Markdown Rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="app" class="app-layout">
+    
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+              <polyline points="2 17 12 22 22 17"></polyline>
+              <polyline points="2 12 12 17 22 12"></polyline>
+            </svg>
+          </div>
+          <div class="brand-text">
+            <h2>Enterprise RAG</h2>
+            <span class="badge-groq">GROQ LPU</span>
+          </div>
+        </div>
+        <button class="btn-new-chat" id="btnNewChat">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>New Thread</span>
+        </button>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="sidebar-nav">
+        <button class="nav-item active" id="navChat" data-view="chat">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span>Chat Assistant</span>
+        </button>
+        <button class="nav-item" id="navAdmin" data-view="admin">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          <span>Dashboard & Docs</span>
+        </button>
+      </nav>
+
+      <!-- Document Scope Filter -->
+      <div class="sidebar-section">
+        <div class="section-title">
+          <span>SEARCH SCOPE</span>
+        </div>
+        <div class="select-wrapper">
+          <select id="documentFilterSelect" class="form-select">
+            <option value="">All Ingested Documents</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Advanced Hybrid Tuning -->
+      <div class="sidebar-section">
+        <div class="section-title collapsible-trigger" id="toggleTuning">
+          <span>HYBRID SEARCH TUNING</span>
+          <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+        <div class="collapsible-content" id="tuningContent">
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Top-K Candidates</span>
+              <span id="topKValue" class="slider-val">15</span>
+            </div>
+            <input type="range" id="topKInput" min="3" max="30" value="15" class="slider">
+          </div>
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Vector Weight (Semantic)</span>
+              <span id="vectorWeightValue" class="slider-val">0.6</span>
+            </div>
+            <input type="range" id="vectorWeightInput" min="0" max="1" step="0.05" value="0.6" class="slider">
+          </div>
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Keyword Weight (BM25/FTS)</span>
+              <span id="keywordWeightValue" class="slider-val">0.4</span>
+            </div>
+            <input type="range" id="keywordWeightInput" min="0" max="1" step="0.05" value="0.4" class="slider">
+          </div>
+        </div>
+      </div>
+
+      <!-- Past Threads History -->
+      <div class="sidebar-section thread-history-section">
+        <div class="section-title">
+          <span>RECENT QUERIES</span>
+        </div>
+        <div class="thread-list" id="threadList">
+          <div class="empty-threads">No previous queries</div>
+        </div>
+      </div>
+
+      <!-- User & Quick Action Footer -->
+      <div class="sidebar-footer">
+        <button class="btn-upload-quick" id="btnOpenUpload">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          <span>Ingest Document</span>
+        </button>
+
+        <div class="user-pill" id="userPill">
+          <div class="user-avatar" id="userAvatar">A</div>
+          <div class="user-details">
+            <span class="user-email" id="userEmailDisplay">admin@company.com</span>
+            <span class="user-role" id="userRoleDisplay">ROLE_ADMIN</span>
+          </div>
+          <button class="btn-logout" id="btnLogout" title="Switch User / Logout">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      
+      <!-- Top Navbar -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="btn-menu" id="btnToggleSidebar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <div class="pipeline-badge">
+            <span class="pulse-dot"></span>
+            <span>Pipeline: <strong>Hybrid (pgvector + FTS)</strong></span>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div class="status-chip chip-groq" title="Ultra-Fast LLM Inference on Groq LPU">
+            <span class="chip-dot"></span>
+            <span>LLM: <strong id="chipModelName">openai/gpt-oss-120b</strong></span>
+          </div>
+          <div class="status-chip chip-embedding" title="Deterministic High-Precision Embeddings">
+            <span>Embed: <strong>Mock (1536d)</strong></span>
+          </div>
+          <div class="status-chip chip-db" title="PostgreSQL 16 with pgvector Extension">
+            <span>DB: <strong>pgvector</strong></span>
+          </div>
+        </div>
+      </header>
+
+      <!-- View: Chat View -->
+      <section class="view-panel active" id="viewChat">
+        <div class="chat-container">
+          
+          <!-- Message Thread -->
+          <div class="chat-messages" id="chatMessages">
+            
+            <!-- Welcome Hero State -->
+            <div class="welcome-hero" id="welcomeHero">
+              <div class="hero-glow"></div>
+              <div class="hero-icon">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="url(#hero-grad)" stroke-width="2">
+                  <defs>
+                    <linearGradient id="hero-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stop-color="#818cf8"/>
+                      <stop offset="100%" stop-color="#06b6d4"/>
+                    </linearGradient>
+                  </defs>
+                  <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10-1.82 0-3.53-.48-5-1.32L3 21l1.32-4A9.95 9.95 0 0 1 2 12C2 6.477 6.477 2 12 2z"></path>
+                </svg>
+              </div>
+              <h2>Ask Your Enterprise Knowledge Base</h2>
+              <p>Powered by ultra-fast <strong>Groq LPU</strong> inference and <strong>PostgreSQL pgvector</strong> hybrid search. Answers are strictly grounded in your documents with verified citations.</p>
+              
+              <div class="quick-prompts">
+                <button class="prompt-chip" data-prompt="what are the courses offered to second year computer engg students">
+                  <span>📚 Second Year Computer Engg Courses</span>
+                </button>
+                <button class="prompt-chip" data-prompt="What is the credit and contact hours distribution?">
+                  <span>⏱️ Credits and Contact Hours</span>
+                </button>
+                <button class="prompt-chip" data-prompt="List the Program Elective Courses (PEC) available with course codes">
+                  <span>🎯 Program Elective Courses (PEC)</span>
+                </button>
+                <button class="prompt-chip" data-prompt="What are the Program Outcomes (POs) defined in the document?">
+                  <span>🎓 Engineering Program Outcomes</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Chat Input Box -->
+          <div class="chat-input-wrapper">
+            <form id="chatForm" class="chat-form">
+              <div class="input-container">
+                <textarea 
+                  id="queryInput" 
+                  class="chat-textarea" 
+                  placeholder="Ask a question about your documents... (Shift + Enter for new line)"
+                  rows="1"
+                  required
+                ></textarea>
+                <button type="submit" id="btnSend" class="btn-send" title="Send Question (Enter)">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                </button>
+              </div>
+              <div class="input-meta">
+                <span class="meta-tip">Press <strong>Enter</strong> to ask, <strong>Shift + Enter</strong> for a new line</span>
+                <span class="active-scope-badge" id="activeScopeBadge">Scope: All Documents</span>
+              </div>
+            </form>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- View: Admin Dashboard & Document Manager -->
+      <section class="view-panel" id="viewAdmin">
+        <div class="admin-container">
+          
+          <div class="admin-header">
+            <div>
+              <h2>Enterprise RAG Dashboard</h2>
+              <p>System metrics, hybrid retrieval performance, and document lifecycle control</p>
+            </div>
+            <button class="btn-primary" id="btnUploadModal2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <span>Upload New Document</span>
+            </button>
+          </div>
+
+          <!-- Metric Cards Grid -->
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-icon icon-docs">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                </svg>
+              </div>
+              <div class="metric-info">
+                <span class="metric-label">Ingested Documents</span>
+                <h3 class="metric-val" id="metricTotalDocs">-</h3>
+                <span class="metric-sub" id="metricCompletedDocs">- successfully indexed</span>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-icon icon-chunks">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                  <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                  <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                  <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                </svg>
+              </div>
+              <div class="metric-info">
+                <span class="metric-label">Vector Chunks</span>
+                <h3 class="metric-val" id="metricTotalChunks">-</h3>
+                <span class="metric-sub">pgvector HNSW index</span>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-icon icon-queries">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                  <polyline points="17 6 23 6 23 12"></polyline>
+                </svg>
+              </div>
+              <div class="metric-info">
+                <span class="metric-label">Queries Processed</span>
+                <h3 class="metric-val" id="metricTotalQueries">-</h3>
+                <span class="metric-sub" id="metricTotalCitations">- verified citations</span>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-icon icon-groq">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                </svg>
+              </div>
+              <div class="metric-info">
+                <span class="metric-label">Active LLM Provider</span>
+                <h3 class="metric-val" id="metricLlm">Groq</h3>
+                <span class="metric-sub" id="metricModel">openai/gpt-oss-120b</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Document Management Table -->
+          <div class="card-panel">
+            <div class="card-panel-header">
+              <h3>Ingested Documents Repository</h3>
+              <button class="btn-refresh" id="btnRefreshDocs" title="Refresh Table">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                <span>Refresh</span>
+              </button>
+            </div>
+            
+            <div class="table-responsive">
+              <table class="data-table" id="documentsTable">
+                <thead>
+                  <tr>
+                    <th>Title & File</th>
+                    <th>Format</th>
+                    <th>Size</th>
+                    <th>Chunks</th>
+                    <th>Status</th>
+                    <th>Indexed Date</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="documentsTableBody">
+                  <tr>
+                    <td colspan="7" class="table-loading">Loading indexed documents...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <!-- Document Upload Modal -->
+  <div class="modal-backdrop" id="uploadModal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>Ingest Enterprise Document</h3>
+        <button class="btn-modal-close" id="btnCloseUpload">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <form id="uploadForm">
+        <div class="modal-body">
+          <div class="dropzone" id="dropzone">
+            <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.csv" hidden required>
+            <div class="dropzone-icon">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+            </div>
+            <p class="dropzone-title">Click to browse or drag & drop files here</p>
+            <p class="dropzone-sub">Supported formats: <strong>PDF, DOCX, TXT, CSV</strong> (Up to 50MB)</p>
+            <div class="selected-file-info" id="selectedFileInfo"></div>
+          </div>
+
+          <div class="form-group">
+            <label for="docTitleInput" class="form-label">Document Title (Optional Override)</label>
+            <input type="text" id="docTitleInput" class="form-control" placeholder="e.g. NEP 2023 Curriculum">
+            <span class="form-hint">If left empty, original filename will be used as title.</span>
+          </div>
+
+          <div class="upload-progress-container" id="uploadProgressContainer">
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="uploadProgressBar"></div>
+            </div>
+            <span class="progress-status-text" id="uploadProgressText">Processing chunking & generating embeddings...</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="btnCancelUpload">Cancel</button>
+          <button type="submit" class="btn-primary" id="btnSubmitUpload">
+            <span>Process & Index</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Script -->
+  <script src="/js/app.js"></script>
+</body>
+</html>
