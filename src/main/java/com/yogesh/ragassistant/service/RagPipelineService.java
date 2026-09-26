@@ -12,6 +12,8 @@ import com.yogesh.ragassistant.history.ChatHistoryService;
 import com.yogesh.ragassistant.mapper.ChatMapper;
 import com.yogesh.ragassistant.prompt.PromptBuilder;
 import com.yogesh.ragassistant.rag.llm.LlmService;
+import com.yogesh.ragassistant.entity.Role;
+import com.yogesh.ragassistant.repository.DocumentRepository;
 import com.yogesh.ragassistant.reranker.RerankService;
 import com.yogesh.ragassistant.retriever.HybridRetriever;
 import com.yogesh.ragassistant.retriever.RetrievedChunk;
@@ -36,6 +38,7 @@ public class RagPipelineService {
     private final ChatHistoryService chatHistoryService;
     private final ChatMapper chatMapper;
     private final RagProperties ragProperties;
+    private final DocumentRepository documentRepository;
 
     public ChatResponse executePipeline(User user, ChatQueryRequest request) {
         long startTime = System.currentTimeMillis();
@@ -44,8 +47,18 @@ public class RagPipelineService {
                 ? request.getConversationId()
                 : UUID.randomUUID().toString();
 
-        log.info("Executing RAG Pipeline for query: '{}' [User: {}, Conv: {}]",
-                query, user.getEmail(), conversationId);
+        boolean isAdmin = user.getRole() == Role.ROLE_ADMIN;
+        UUID userIdFilter = isAdmin ? null : user.getId();
+
+        // Security check: non-admin users can only set scope to docs they ingested
+        if (!isAdmin && request.getDocumentIdFilter() != null) {
+            if (!documentRepository.existsByIdAndUserId(request.getDocumentIdFilter(), user.getId())) {
+                throw new IllegalArgumentException("Access Denied: You can only query documents that you ingested.");
+            }
+        }
+
+        log.info("Executing RAG Pipeline for query: '{}' [User: {}, Role: {}, Conv: {}, DocumentScope: {}, UserScope: {}]",
+                query, user.getEmail(), user.getRole(), conversationId, request.getDocumentIdFilter(), userIdFilter);
 
         // 1. Generate Query Vector Embedding
         long embedStart = System.currentTimeMillis();
@@ -59,6 +72,7 @@ public class RagPipelineService {
                 query,
                 queryEmbedding,
                 request.getDocumentIdFilter(),
+                userIdFilter,
                 request.getTopK(),
                 request.getVectorWeight(),
                 request.getKeywordWeight()

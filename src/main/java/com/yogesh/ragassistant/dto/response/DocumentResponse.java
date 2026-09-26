@@ -31,6 +31,9 @@ public class DocumentResponse {
 
     private String errorMessage;
 
+    private String uploadedBy;
+    private UUID userId;
+
     private Instant createdAt;
 
     private Instant updatedAt;

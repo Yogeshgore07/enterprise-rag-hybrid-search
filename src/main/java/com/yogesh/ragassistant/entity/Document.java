@@ -47,6 +47,10 @@ public class Document {
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;
+
     @OneToMany(mappedBy = "document", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<DocumentChunk> chunks = new ArrayList<>();

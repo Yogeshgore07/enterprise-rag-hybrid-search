@@ -34,14 +34,8 @@ public class AuthService {
             throw new IllegalArgumentException("User with email already exists: " + request.getEmail());
         }
 
+        // Registration is strictly for standard users (ROLE_USER)
         Role role = Role.ROLE_USER;
-        if (request.getRole() != null) {
-            try {
-                role = Role.valueOf(request.getRole().toUpperCase());
-            } catch (IllegalArgumentException ex) {
-                log.warn("Invalid role provided: {}, defaulting to ROLE_USER", request.getRole());
-            }
-        }
 
         User user = User.builder()
                 .email(request.getEmail().toLowerCase().trim())

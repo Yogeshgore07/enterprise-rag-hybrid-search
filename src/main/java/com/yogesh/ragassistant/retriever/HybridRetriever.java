@@ -35,6 +35,17 @@ public class HybridRetriever {
                                          Integer topKOverride,
                                          Double vectorWeightOverride,
                                          Double keywordWeightOverride) {
+        return retrieve(query, queryEmbedding, documentIdFilter, null, topKOverride, vectorWeightOverride, keywordWeightOverride);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RetrievedChunk> retrieve(String query,
+                                         float[] queryEmbedding,
+                                         UUID documentIdFilter,
+                                         UUID userIdFilter,
+                                         Integer topKOverride,
+                                         Double vectorWeightOverride,
+                                         Double keywordWeightOverride) {
 
         int topK = topKOverride != null ? topKOverride : ragProperties.getRetrieval().getTopK();
         double vectorWeight = vectorWeightOverride != null ? vectorWeightOverride : ragProperties.getRetrieval().getVectorWeight();
@@ -47,7 +58,7 @@ public class HybridRetriever {
         String vectorString = VectorUtils.toPgVectorString(queryEmbedding);
         List<DocumentChunkRepository.ChunkSearchResult> semanticResults = List.of();
         try {
-            semanticResults = chunkRepository.searchSemantic(vectorString, documentIdFilter, topK);
+            semanticResults = chunkRepository.searchSemantic(vectorString, documentIdFilter, userIdFilter, topK);
         } catch (Exception ex) {
             log.warn("Semantic search failed or returned no results: {}", ex.getMessage());
         }
@@ -55,7 +66,7 @@ public class HybridRetriever {
         // 2. Keyword Search
         List<DocumentChunkRepository.ChunkSearchResult> keywordResults = List.of();
         try {
-            keywordResults = chunkRepository.searchKeyword(query, documentIdFilter, topK);
+            keywordResults = chunkRepository.searchKeyword(query, documentIdFilter, userIdFilter, topK);
         } catch (Exception ex) {
             log.warn("Keyword search failed or returned no results: {}", ex.getMessage());
         }

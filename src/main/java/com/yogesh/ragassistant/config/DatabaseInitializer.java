@@ -106,6 +106,13 @@ public class DatabaseInitializer implements CommandLineRunner {
 
         // Seed default admin and user if repository is empty
         seedDefaultUsers();
+
+        // Ensure legacy documents have an owner (assign to admin)
+        executeSqlQuietly("assign orphan documents to admin", """
+            UPDATE documents 
+            SET user_id = (SELECT id FROM users WHERE email = 'admin@company.com' LIMIT 1) 
+            WHERE user_id IS NULL;
+        """);
     }
 
     private void executeSqlQuietly(String description, String sql) {

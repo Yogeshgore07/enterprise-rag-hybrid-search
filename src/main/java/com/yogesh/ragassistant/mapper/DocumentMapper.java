@@ -21,6 +21,8 @@ public class DocumentMapper {
                 .chunkCount(document.getChunkCount())
                 .status(document.getStatus())
                 .errorMessage(document.getErrorMessage())
+                .uploadedBy(document.getUser() != null ? document.getUser().getEmail() : "System")
+                .userId(document.getUser() != null ? document.getUser().getId() : null)
                 .createdAt(document.getCreatedAt())
                 .updatedAt(document.getUpdatedAt())
                 .build();

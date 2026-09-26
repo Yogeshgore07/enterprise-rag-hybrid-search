@@ -8,6 +8,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Authentication Guard -->
+  <script>
+    (function() {
+      try {
+        const user = localStorage.getItem('rag_user');
+        if (!user) {
+          window.location.replace('/login.html');
+        }
+      } catch (e) {
+        window.location.replace('/login.html');
+      }
+    })();
+  </script>
   <!-- Marked for Markdown Rendering -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="/css/style.css">
@@ -61,8 +74,9 @@
 
       <!-- Document Scope Filter -->
       <div class="sidebar-section">
-        <div class="section-title">
+        <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
           <span>SEARCH SCOPE</span>
+          <span id="scopeRoleBadge" class="scope-badge-user">USER SCOPE</span>
         </div>
         <div class="select-wrapper">
           <select id="documentFilterSelect" class="form-select">
@@ -345,6 +359,7 @@
                     <th>Format</th>
                     <th>Size</th>
                     <th>Chunks</th>
+                    <th>Owner</th>
                     <th>Status</th>
                     <th>Indexed Date</th>
                     <th>Actions</th>
@@ -352,7 +367,7 @@
                 </thead>
                 <tbody id="documentsTableBody">
                   <tr>
-                    <td colspan="7" class="table-loading">Loading indexed documents...</td>
+                    <td colspan="8" class="table-loading">Loading indexed documents...</td>
                   </tr>
                 </tbody>
               </table>

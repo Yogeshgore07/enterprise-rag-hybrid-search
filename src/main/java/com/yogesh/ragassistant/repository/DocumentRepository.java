@@ -14,6 +14,10 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
     List<Document> findAllByOrderByCreatedAtDesc();
 
+    List<Document> findByUserIdOrderByCreatedAtDesc(UUID userId);
+
+    boolean existsByIdAndUserId(UUID id, UUID userId);
+
     long countByStatus(DocumentStatus status);
 
     @Query("SELECT d.fileType, COUNT(d) FROM Document d GROUP BY d.fileType")

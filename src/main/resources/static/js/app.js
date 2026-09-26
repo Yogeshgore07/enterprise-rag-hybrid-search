@@ -7,12 +7,22 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==========================================
   // App State & Config
   // ==========================================
+  // Load authenticated session from localStorage
+  let savedUser = null;
+  try {
+    const raw = localStorage.getItem('rag_user');
+    if (raw) savedUser = JSON.parse(raw);
+  } catch (e) {
+    console.error('Failed to parse saved user', e);
+  }
+
+  if (!savedUser) {
+    window.location.replace('/login.html');
+    return;
+  }
+
   const state = {
-    user: {
-      email: 'admin@company.com',
-      password: 'Password@123',
-      role: 'ROLE_ADMIN'
-    },
+    user: savedUser,
     currentConversationId: null,
     activeView: 'chat',
     documents: [],
@@ -97,6 +107,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // User & Toasts
     userEmailDisplay: document.getElementById('userEmailDisplay'),
     userRoleDisplay: document.getElementById('userRoleDisplay'),
+    userAvatar: document.getElementById('userAvatar'),
+    scopeRoleBadge: document.getElementById('scopeRoleBadge'),
     btnLogout: document.getElementById('btnLogout'),
     toastContainer: document.getElementById('toastContainer')
   };
@@ -105,8 +117,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // Helper: Basic Auth Headers
   // ==========================================
   function getAuthHeader() {
-    const creds = btoa(`${state.user.email}:${state.user.password}`);
-    return `Basic ${creds}`;
+    if (state.user && state.user.authHeader) {
+      return state.user.authHeader;
+    }
+    if (state.user && state.user.email && state.user.password) {
+      return `Basic ${btoa(`${state.user.email}:${state.user.password}`)}`;
+    }
+    return '';
   }
 
   async function apiFetch(endpoint, options = {}) {
@@ -127,6 +144,13 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const res = await fetch(endpoint, mergedOptions);
+
+    if (res.status === 401) {
+      localStorage.removeItem('rag_user');
+      window.location.replace('/login.html');
+      return null;
+    }
+
     const data = await res.json().catch(() => null);
 
     if (!res.ok) {
@@ -167,6 +191,64 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================
+  // User Profile & Role-Based UI
+  // ==========================================
+  function initUserInterface() {
+    if (!state.user) return;
+
+    if (elements.userEmailDisplay) {
+      elements.userEmailDisplay.textContent = state.user.email;
+    }
+
+    if (elements.userRoleDisplay) {
+      elements.userRoleDisplay.textContent = state.user.role;
+      if (state.user.role === 'ROLE_ADMIN') {
+        elements.userRoleDisplay.style.color = '#c084fc';
+        elements.userRoleDisplay.style.borderColor = 'rgba(139, 92, 246, 0.4)';
+      } else {
+        elements.userRoleDisplay.style.color = '#38bdf8';
+        elements.userRoleDisplay.style.borderColor = 'rgba(6, 182, 212, 0.4)';
+      }
+    }
+
+    if (elements.userAvatar) {
+      const initial = (state.user.fullName || state.user.email || 'U').charAt(0).toUpperCase();
+      elements.userAvatar.textContent = initial;
+    }
+
+    if (elements.scopeRoleBadge) {
+      if (state.user.role === 'ROLE_ADMIN') {
+        elements.scopeRoleBadge.className = 'scope-badge-admin';
+        elements.scopeRoleBadge.textContent = 'ADMIN (ALL DOCS)';
+      } else {
+        elements.scopeRoleBadge.className = 'scope-badge-user';
+        elements.scopeRoleBadge.textContent = 'USER (MY DOCS ONLY)';
+      }
+    }
+
+    // Role-based visibility for Admin View tab
+    if (state.user.role !== 'ROLE_ADMIN') {
+      if (elements.navAdmin) {
+        elements.navAdmin.style.display = 'none';
+      }
+    } else {
+      if (elements.navAdmin) {
+        elements.navAdmin.style.display = 'flex';
+      }
+    }
+  }
+
+  // Logout / Switch User
+  if (elements.btnLogout) {
+    elements.btnLogout.addEventListener('click', () => {
+      if (confirm('Are you sure you want to sign out?')) {
+        localStorage.removeItem('rag_user');
+        window.location.replace('/login.html');
+      }
+    });
+  }
+
+  // ==========================================
   // Hybrid Tuning Controls
   // ==========================================
   elements.toggleTuning.addEventListener('click', () => {
@@ -192,9 +274,14 @@ document.addEventListener('DOMContentLoaded', () => {
   elements.documentFilterSelect.addEventListener('change', (e) => {
     state.selectedDocId = e.target.value || null;
     const selectedText = e.target.options[e.target.selectedIndex].text;
-    elements.activeScopeBadge.textContent = state.selectedDocId 
-      ? `Scope: ${selectedText}` 
-      : 'Scope: All Documents';
+    const isAdmin = state.user && state.user.role === 'ROLE_ADMIN';
+    if (state.selectedDocId) {
+      elements.activeScopeBadge.textContent = `Scope: ${selectedText}`;
+    } else {
+      elements.activeScopeBadge.textContent = isAdmin 
+        ? 'Scope: All Documents (System-wide)' 
+        : 'Scope: All My Ingested Documents';
+    }
   });
 
   // ==========================================
@@ -215,16 +302,42 @@ document.addEventListener('DOMContentLoaded', () => {
   function populateScopeDropdown() {
     const select = elements.documentFilterSelect;
     const currentVal = select.value;
-    select.innerHTML = '<option value="">All Ingested Documents</option>';
+    const isAdmin = state.user && state.user.role === 'ROLE_ADMIN';
+
+    select.innerHTML = '';
+
+    if (isAdmin) {
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = `All Ingested Documents (${state.documents.length} available)`;
+      select.appendChild(defaultOpt);
+    } else {
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      if (state.documents.length === 0) {
+        defaultOpt.textContent = 'No documents ingested yet (Upload below)';
+      } else {
+        defaultOpt.textContent = `All My Ingested Documents (${state.documents.length} indexed)`;
+      }
+      select.appendChild(defaultOpt);
+    }
 
     state.documents.forEach(doc => {
       const opt = document.createElement('option');
       opt.value = doc.id;
-      opt.textContent = `${doc.title || doc.filename} (${doc.chunkCount || 0} chunks)`;
+      const ownerLabel = (isAdmin && doc.uploadedBy) ? ` [by ${doc.uploadedBy}]` : '';
+      opt.textContent = `${doc.title || doc.filename}${ownerLabel} (${doc.chunkCount || 0} chunks)`;
       select.appendChild(opt);
     });
 
     select.value = currentVal;
+
+    // Update active badge text on initial load
+    if (!state.selectedDocId) {
+      elements.activeScopeBadge.textContent = isAdmin 
+        ? 'Scope: All Documents (System-wide)' 
+        : (state.documents.length === 0 ? 'Scope: No Documents Yet' : 'Scope: All My Documents');
+    }
   }
 
   // ==========================================
@@ -632,7 +745,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function loadDocumentsTable() {
-    elements.documentsTableBody.innerHTML = '<tr><td colspan="7" class="table-loading">Loading indexed documents...</td></tr>';
+    elements.documentsTableBody.innerHTML = '<tr><td colspan="8" class="table-loading">Loading indexed documents...</td></tr>';
     try {
       const res = await apiFetch('/api/documents');
       if (res && res.data) {
@@ -641,7 +754,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderDocumentsTable(res.data);
       }
     } catch (err) {
-      elements.documentsTableBody.innerHTML = `<tr><td colspan="7" class="table-loading" style="color:var(--danger)">Error: ${escapeHtml(err.message)}</td></tr>`;
+      elements.documentsTableBody.innerHTML = `<tr><td colspan="8" class="table-loading" style="color:var(--danger)">Error: ${escapeHtml(err.message)}</td></tr>`;
     }
   }
 
@@ -650,7 +763,7 @@ document.addEventListener('DOMContentLoaded', () => {
     tbody.innerHTML = '';
 
     if (!docs || docs.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" class="table-loading">No documents indexed yet. Upload one to get started!</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="table-loading">No documents indexed yet. Upload one to get started!</td></tr>';
       return;
     }
 
@@ -659,6 +772,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const sizeKb = doc.fileSize ? Math.round(doc.fileSize / 1024) + ' KB' : '-';
       const dateStr = doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : '-';
       const statusClass = (doc.status || 'INDEXED').toLowerCase();
+      const owner = doc.uploadedBy || 'System';
 
       tr.innerHTML = `
         <td>
@@ -668,6 +782,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <td><span class="citation-tag">${escapeHtml((doc.fileType || 'PDF').toUpperCase())}</span></td>
         <td style="font-family:var(--font-mono)">${sizeKb}</td>
         <td style="font-family:var(--font-mono); font-weight:600; color:var(--cyan)">${doc.chunkCount || 0}</td>
+        <td><span style="font-size:0.75rem; color:var(--text-secondary); font-family:var(--font-mono)">${escapeHtml(owner)}</span></td>
         <td><span class="badge-status status-${statusClass}">${escapeHtml(doc.status || 'INDEXED')}</span></td>
         <td>${dateStr}</td>
         <td>
@@ -856,6 +971,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==========================================
   // Initialize App
   // ==========================================
+  initUserInterface();
   loadDocuments();
   loadPastHistory();
 });

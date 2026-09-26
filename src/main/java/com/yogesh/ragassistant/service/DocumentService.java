@@ -22,6 +22,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.yogesh.ragassistant.entity.User;
+import com.yogesh.ragassistant.security.UserPrincipal;
+import org.springframework.security.access.AccessDeniedException;
+
 import java.io.InputStream;
 import java.util.*;
 
@@ -40,6 +44,11 @@ public class DocumentService {
 
     @Transactional
     public DocumentResponse processAndStoreDocument(MultipartFile file, String titleOverride) {
+        return processAndStoreDocument(file, titleOverride, null);
+    }
+
+    @Transactional
+    public DocumentResponse processAndStoreDocument(MultipartFile file, String titleOverride, User user) {
         if (file == null || file.isEmpty()) {
             throw new DocumentProcessingException("Uploaded file cannot be empty");
         }
@@ -55,7 +64,8 @@ public class DocumentService {
                 : originalFilename.substring(0, originalFilename.lastIndexOf('.'));
 
         long fileSize = file.getSize();
-        log.info("Starting automated RAG pipeline for document: '{}' ({}, {} bytes)", title, originalFilename, fileSize);
+        log.info("Starting automated RAG pipeline for document: '{}' ({}, {} bytes) by user: {}",
+                title, originalFilename, fileSize, user != null ? user.getEmail() : "system");
 
         // 1. Initialize Document Entity
         Document document = Document.builder()
@@ -65,6 +75,7 @@ public class DocumentService {
                 .fileSize(fileSize)
                 .status(DocumentStatus.PROCESSING)
                 .chunkCount(0)
+                .user(user)
                 .build();
 
         Document savedDoc = documentRepository.save(document);
@@ -170,9 +181,43 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
+    public List<DocumentResponse> getDocumentsForUser(UserPrincipal principal) {
+        if (principal == null) {
+            return getAllDocuments();
+        }
+
+        boolean isAdmin = principal.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+
+        if (isAdmin) {
+            return getAllDocuments();
+        } else {
+            return documentRepository.findByUserIdOrderByCreatedAtDesc(principal.getId())
+                    .stream()
+                    .map(documentMapper::toResponse)
+                    .toList();
+        }
+    }
+
+    @Transactional(readOnly = true)
     public DocumentResponse getDocumentById(UUID id) {
         Document document = documentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Document", "id", id));
+        return documentMapper.toResponse(document);
+    }
+
+    @Transactional(readOnly = true)
+    public DocumentResponse getDocumentById(UUID id, UserPrincipal principal) {
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Document", "id", id));
+
+        boolean isAdmin = principal != null && principal.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+
+        if (!isAdmin && principal != null && document.getUser() != null && !document.getUser().getId().equals(principal.getId())) {
+            throw new AccessDeniedException("Access denied: You can only view documents that you ingested.");
+        }
+
         return documentMapper.toResponse(document);
     }
 
@@ -181,6 +226,22 @@ public class DocumentService {
         log.info("Deleting document and all associated chunks for id: {}", id);
         Document document = documentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Document", "id", id));
+        documentRepository.delete(document);
+    }
+
+    @Transactional
+    public void deleteDocument(UUID id, UserPrincipal principal) {
+        log.info("Deleting document and all associated chunks for id: {} by user: {}", id, principal != null ? principal.getEmail() : "anonymous");
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Document", "id", id));
+
+        boolean isAdmin = principal != null && principal.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+
+        if (!isAdmin && principal != null && document.getUser() != null && !document.getUser().getId().equals(principal.getId())) {
+            throw new AccessDeniedException("Access denied: You can only delete documents that you ingested.");
+        }
+
         documentRepository.delete(document);
     }
 }

@@ -41,12 +41,14 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
         FROM document_chunks c
         JOIN documents d ON c.document_id = d.id
         WHERE (:documentId IS NULL OR c.document_id = :documentId)
+          AND (:userId IS NULL OR d.user_id = :userId)
         ORDER BY c.embedding <=> CAST(:queryVector AS vector) ASC
         LIMIT :topK
         """, nativeQuery = true)
     List<ChunkSearchResult> searchSemantic(
             @Param("queryVector") String queryVector,
             @Param("documentId") UUID documentId,
+            @Param("userId") UUID userId,
             @Param("topK") int topK);
 
     /**
@@ -65,12 +67,14 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
         JOIN documents d ON c.document_id = d.id
         WHERE c.search_vector @@ plainto_tsquery('english', :queryText)
           AND (:documentId IS NULL OR c.document_id = :documentId)
+          AND (:userId IS NULL OR d.user_id = :userId)
         ORDER BY score DESC
         LIMIT :topK
         """, nativeQuery = true)
     List<ChunkSearchResult> searchKeyword(
             @Param("queryText") String queryText,
             @Param("documentId") UUID documentId,
+            @Param("userId") UUID userId,
             @Param("topK") int topK);
 
     /**
