@@ -51,8 +51,8 @@ class HybridRetrieverTest {
         DocumentChunkRepository.ChunkSearchResult key1 = createMockResult(chunk1Id, docId, "Doc A", 1, 0, "Chunk 1 text", 0.50);
         DocumentChunkRepository.ChunkSearchResult key3 = createMockResult(chunk3Id, docId, "Doc A", 2, 2, "Chunk 3 text", 0.30);
 
-        when(chunkRepository.searchSemantic(anyString(), any(), anyInt())).thenReturn(List.of(sem1, sem2));
-        when(chunkRepository.searchKeyword(anyString(), any(), anyInt())).thenReturn(List.of(key1, key3));
+        when(chunkRepository.searchSemantic(anyString(), any(), any(), anyInt())).thenReturn(List.of(sem1, sem2));
+        when(chunkRepository.searchKeyword(anyString(), any(), any(), anyInt())).thenReturn(List.of(key1, key3));
 
         float[] mockVector = new float[1536];
         List<RetrievedChunk> results = hybridRetriever.retrieve("What is the architecture?", mockVector, null, null, null, null);
