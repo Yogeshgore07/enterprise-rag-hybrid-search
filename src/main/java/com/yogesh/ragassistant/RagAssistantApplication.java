@@ -27,6 +27,7 @@ public class RagAssistantApplication {
 
     public static void main(String[] args) {
         loadDotEnvIfPresent();
+        configureDatabaseProperties();
         SpringApplication.run(RagAssistantApplication.class, args);
     }
 
@@ -56,6 +57,73 @@ public class RagAssistantApplication {
                 }
             }
         } catch (Exception ignored) {
+        }
+    }
+
+    /**
+     * Translates cloud provider connection strings (e.g. Render, Railway, Heroku DATABASE_URL)
+     * from postgres:// or postgresql:// into JDBC format and extracts credentials if embedded.
+     */
+    private static void configureDatabaseProperties() {
+        String dbUrl = System.getenv("SPRING_DATASOURCE_URL");
+        if (dbUrl == null || dbUrl.isBlank()) {
+            dbUrl = System.getProperty("SPRING_DATASOURCE_URL");
+        }
+        if (dbUrl == null || dbUrl.isBlank()) {
+            dbUrl = System.getenv("DATABASE_URL");
+        }
+        if (dbUrl == null || dbUrl.isBlank()) {
+            dbUrl = System.getProperty("DATABASE_URL");
+        }
+
+        if (dbUrl == null || dbUrl.isBlank()) {
+            return;
+        }
+
+        dbUrl = dbUrl.trim();
+
+        if (dbUrl.startsWith("postgres://") || dbUrl.startsWith("postgresql://")) {
+            try {
+                String uriStr = dbUrl.replaceFirst("^postgres(ql)?://", "http://");
+                java.net.URI uri = new java.net.URI(uriStr);
+                String userInfo = uri.getUserInfo();
+                String host = uri.getHost();
+                int port = uri.getPort() == -1 ? 5432 : uri.getPort();
+                String path = uri.getPath();
+                String query = uri.getQuery();
+
+                if (userInfo != null && !userInfo.isBlank()) {
+                    String[] credentials = userInfo.split(":", 2);
+                    if (System.getProperty("spring.datasource.username") == null && System.getenv("SPRING_DATASOURCE_USERNAME") == null) {
+                        System.setProperty("spring.datasource.username", credentials[0]);
+                        System.setProperty("SPRING_DATASOURCE_USERNAME", credentials[0]);
+                    }
+                    if (credentials.length > 1 && System.getProperty("spring.datasource.password") == null && System.getenv("SPRING_DATASOURCE_PASSWORD") == null) {
+                        System.setProperty("spring.datasource.password", credentials[1]);
+                        System.setProperty("SPRING_DATASOURCE_PASSWORD", credentials[1]);
+                    }
+                }
+
+                StringBuilder jdbcUrl = new StringBuilder("jdbc:postgresql://")
+                        .append(host)
+                        .append(":")
+                        .append(port)
+                        .append(path != null ? path : "");
+                if (query != null && !query.isBlank()) {
+                    jdbcUrl.append("?").append(query);
+                }
+                String finalUrl = jdbcUrl.toString();
+                System.setProperty("spring.datasource.url", finalUrl);
+                System.setProperty("SPRING_DATASOURCE_URL", finalUrl);
+            } catch (Exception ex) {
+                String fallbackUrl = dbUrl.replaceFirst("^postgres(ql)?://", "jdbc:postgresql://");
+                System.setProperty("spring.datasource.url", fallbackUrl);
+                System.setProperty("SPRING_DATASOURCE_URL", fallbackUrl);
+            }
+        } else if (!dbUrl.startsWith("jdbc:")) {
+            String finalUrl = "jdbc:" + dbUrl;
+            System.setProperty("spring.datasource.url", finalUrl);
+            System.setProperty("SPRING_DATASOURCE_URL", finalUrl);
         }
     }
 }
