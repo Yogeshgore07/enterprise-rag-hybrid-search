@@ -26,6 +26,7 @@ import java.io.FileReader;
 public class RagAssistantApplication {
 
     public static void main(String[] args) {
+        System.setProperty("java.net.preferIPv4Stack", "true");
         loadDotEnvIfPresent();
         configureDatabaseProperties();
         SpringApplication.run(RagAssistantApplication.class, args);
@@ -77,10 +78,12 @@ public class RagAssistantApplication {
         }
 
         if (dbUrl == null || dbUrl.isBlank()) {
+            System.err.println("[Database Config] WARNING: Neither SPRING_DATASOURCE_URL nor DATABASE_URL is set. Falling back to application.properties defaults (localhost:5432). If deploying on Render, configure SPRING_DATASOURCE_URL in Environment Variables!");
             return;
         }
 
         dbUrl = dbUrl.trim();
+        String finalUrl;
 
         if (dbUrl.startsWith("postgres://") || dbUrl.startsWith("postgresql://")) {
             try {
@@ -112,18 +115,30 @@ public class RagAssistantApplication {
                 if (query != null && !query.isBlank()) {
                     jdbcUrl.append("?").append(query);
                 }
-                String finalUrl = jdbcUrl.toString();
+                finalUrl = jdbcUrl.toString();
                 System.setProperty("spring.datasource.url", finalUrl);
                 System.setProperty("SPRING_DATASOURCE_URL", finalUrl);
             } catch (Exception ex) {
-                String fallbackUrl = dbUrl.replaceFirst("^postgres(ql)?://", "jdbc:postgresql://");
-                System.setProperty("spring.datasource.url", fallbackUrl);
-                System.setProperty("SPRING_DATASOURCE_URL", fallbackUrl);
+                finalUrl = dbUrl.replaceFirst("^postgres(ql)?://", "jdbc:postgresql://");
+                System.setProperty("spring.datasource.url", finalUrl);
+                System.setProperty("SPRING_DATASOURCE_URL", finalUrl);
             }
         } else if (!dbUrl.startsWith("jdbc:")) {
-            String finalUrl = "jdbc:" + dbUrl;
+            finalUrl = "jdbc:" + dbUrl;
+            System.setProperty("spring.datasource.url", finalUrl);
+            System.setProperty("SPRING_DATASOURCE_URL", finalUrl);
+        } else {
+            finalUrl = dbUrl;
             System.setProperty("spring.datasource.url", finalUrl);
             System.setProperty("SPRING_DATASOURCE_URL", finalUrl);
         }
+
+        System.out.println("[Database Config] Initialized DataSource URL: " + maskUrl(finalUrl));
+    }
+
+    private static String maskUrl(String url) {
+        if (url == null) return "null";
+        return url.replaceAll("(?i)(password=)[^&]+", "$1****")
+                  .replaceAll("://([^:]+):([^@]+)@", "://$1:****@");
     }
 }
